@@ -1,0 +1,186 @@
+<!-- backend/templates/dashboard.html -->
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>Manager Dashboard - Payments</title>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                margin: 20px;
+            }
+            .cards {
+                display: flex;
+                gap: 20px;
+                margin-bottom: 20px;
+            }
+            .card {
+                padding: 15px;
+                border-radius: 8px;
+                box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+                min-width: 180px;
+            }
+            .charts {
+                display: flex;
+                gap: 20px;
+            }
+            .chartbox {
+                flex: 1;
+                padding: 10px;
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 20px;
+            }
+            th,
+            td {
+                padding: 8px;
+                border-bottom: 1px solid #eee;
+                text-align: left;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Payments Manager Dashboard</h1>
+        <div class="cards">
+            <div class="card">
+                <h3>Total Txns Today</h3>
+                <div id="total_count">...</div>
+            </div>
+            <div class="card">
+                <h3>Total Volume Today</h3>
+                <div id="total_volume">...</div>
+            </div>
+            <div class="card">
+                <h3>Pending</h3>
+                <div id="pending_count">...</div>
+            </div>
+        </div>
+
+        <div class="charts">
+            <div class="chartbox">
+                <h4>Transactions by Channel</h4>
+                <canvas id="channelChart"></canvas>
+            </div>
+            <div class="chartbox">
+                <h4>Transactions by Status</h4>
+                <canvas id="statusChart"></canvas>
+            </div>
+        </div>
+
+        <h3>Recent Transactions</h3>
+        <table id="recentTable">
+            <thead>
+                <tr>
+                    <th>Txn ID</th>
+                    <th>Payer</th>
+                    <th>Payee</th>
+                    <th>Amount</th>
+                    <th>Channel</th>
+                    <th>Status</th>
+                    <th>Time</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+
+        <h3>Recent Edits</h3>
+        <table id="editsTable">
+            <thead>
+                <tr>
+                    <th>Txn ID</th>
+                    <th>Field</th>
+                    <th>Old</th>
+                    <th>New</th>
+                    <th>By</th>
+                    <th>At (UTC)</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+
+        <script>
+            async function loadStats() {
+                const res = await fetch("/api/stats");
+                const data = await res.json();
+                document.getElementById("total_count").innerText =
+                    data.total_count;
+                document.getElementById("total_volume").innerText = data
+                    .total_volume.toFixed
+                    ? data.total_volume.toFixed(2)
+                    : data.total_volume;
+                // channel chart
+                const channels = data.channel_data.map(
+                    (c) => c._id || "Unknown"
+                );
+                const chCounts = data.channel_data.map((c) => c.count);
+                const ctx1 = document
+                    .getElementById("channelChart")
+                    .getContext("2d");
+                new Chart(ctx1, {
+                    type: "pie",
+                    data: {
+                        labels: channels,
+                        datasets: [{ label: "Channel", data: chCounts }],
+                    },
+                    options: {},
+                });
+
+                // status
+                const statuses = data.status_data.map(
+                    (s) => s._id || "Unknown"
+                );
+                const stCounts = data.status_data.map((s) => s.count);
+                const ctx2 = document
+                    .getElementById("statusChart")
+                    .getContext("2d");
+                new Chart(ctx2, {
+                    type: "bar",
+                    data: {
+                        labels: statuses,
+                        datasets: [{ label: "By status", data: stCounts }],
+                    },
+                    options: {},
+                });
+
+                // recent transactions
+                const recent = await fetch("/api/recent").then((r) => r.json());
+                const tbody = document.querySelector("#recentTable tbody");
+                tbody.innerHTML = recent
+                    .map(
+                        (t) => `<tr>
+    <td>${t.txn_id}</td><td>${t.payer}</td><td>${t.payee}</td><td>${
+                            t.amount
+                        }</td><td>${t.channel}</td><td>${
+                            t.status
+                        }</td><td>${new Date(t.timestamp).toLocaleString()}</td>
+  </tr>`
+                    )
+                    .join("");
+
+                // edits
+                const edits = data.recent_edits || [];
+                const tbody2 = document.querySelector("#editsTable tbody");
+                tbody2.innerHTML = edits
+                    .map(
+                        (e) => `<tr>
+    <td>${e.txn_id}</td><td>${e.field}</td><td>${e.old_value}</td><td>${e.new_value}</td><td>${e.edited_by}</td><td>${e.edited_at}</td>
+  </tr>`
+                    )
+                    .join("");
+
+                // pending count
+                const pending = data.status_data.find(
+                    (s) => s._id === "Pending"
+                );
+                document.getElementById("pending_count").innerText = pending
+                    ? pending.count
+                    : 0;
+            }
+
+            window.onload = loadStats;
+        </script>
+    </body>
+</html>
